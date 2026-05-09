@@ -248,7 +248,57 @@ void AFluidSimulator::ComputeForces()
 
 		const FVector2D fGravity = Gravity * mass3D_i;
 
-		Particles[i].Force = fPressure + fVisc + fGravity;
+		FVector2D fBoundaryForce = FVector2D::ZeroVector;
+
+		if (UseBoundaryForces) {
+			const float thresh = BoundaryThickness;
+
+			{
+				const float dist = pi.X - SpawnAreaMin.X;
+				if (dist < thresh) {
+					const float depth = thresh - dist;
+					const FVector2D normal(1.0f, 0.0f);
+					const float velN = FVector2D::DotProduct(vi, normal);
+					const FVector2D acc = BoundaryStiffness * depth * normal - BoundaryDamping * velN * normal;
+					fBoundaryForce += acc * mass3D_i;
+				}
+			}
+
+			{
+				const float dist = SpawnAreaMax.X - pi.X;
+				if (dist < thresh) {
+					const float depth = thresh - dist;
+					const FVector2D normal(-1.0f, 0.0f);
+					const float velN = FVector2D::DotProduct(vi, normal);
+					const FVector2D acc = BoundaryStiffness * depth * normal - BoundaryDamping * velN * normal;
+					fBoundaryForce += acc * mass3D_i;
+				}
+			}
+
+			{
+				const float dist = pi.Y - SpawnAreaMin.Y;
+				if (dist < thresh) {
+					const float depth = thresh - dist;
+					const FVector2D normal(0.0f, 1.0f);
+					const float velN = FVector2D::DotProduct(vi, normal);
+					const FVector2D acc = BoundaryStiffness * depth * normal - BoundaryDamping * velN * normal;
+					fBoundaryForce += acc * mass3D_i;
+				}
+			}
+
+			{
+				const float dist = SpawnAreaMax.Y - pi.Y;
+				if (dist < thresh) {
+					const float depth = thresh - dist;
+					const FVector2D normal(0.0f, -1.0f);
+					const float velN = FVector2D::DotProduct(vi, normal);
+					const FVector2D acc = BoundaryStiffness * depth * normal - BoundaryDamping * velN * normal;
+					fBoundaryForce += acc * mass3D_i;
+				}
+			}
+		}
+
+		Particles[i].Force = fPressure + fVisc + fGravity + fBoundaryForce;
 	}
 }
 
@@ -268,7 +318,7 @@ void AFluidSimulator::Integrate(float Dt)
 		Particles[i].Velocity *= DampeningFactor;
 		Particles[i].Position += Particles[i].Velocity * Dt;
 
-		if (bClampToGround) {
+		if (!UseBoundaryForces && bClampToGround) {
 			if (Particles[i].Position.X < SpawnAreaMin.X) {
 				Particles[i].Position.X = SpawnAreaMin.X; Particles[i].Velocity.X *= -0.25f;
 			} else if (Particles[i].Position.X > SpawnAreaMax.X) {

@@ -30,7 +30,7 @@ public:
 	FVector2D Gravity = FVector2D(-980.0f, 0.0f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid")
-	float DampeningFactor = 0.92f;
+	float DampeningFactor = 0.98f;
 
 	// SPH
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
@@ -66,8 +66,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
 	float PlaneZ = 0.0f;
 
+	// old clamp deprecate
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
 	bool bClampToGround = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary")
+	bool UseBoundaryForces = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary")
+	float BoundaryThickness = 20.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary")
+	float BoundaryStiffness = 1500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary")
+	float BoundaryDamping = 50.0f;
 
 private:
 	TArray<FluidParticle> Particles;
