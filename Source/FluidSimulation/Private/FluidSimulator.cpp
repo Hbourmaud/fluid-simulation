@@ -76,19 +76,20 @@ void AFluidSimulator::InitializeParticles()
 	const float particleArea = (NumParticles > 0) ? (area / float(NumParticles)) : 1.0f;
 	const float mass2D = RestDensity * particleArea;
 
-	FRandomStream Rand(12345);
+	// temp grid spawn
+	const float spacing = 20.0f;
+	int cols = 45;
 
-	for (int32 i = 0; i < NumParticles; ++i) {
-		const FVector2D pos(
-			Rand.FRandRange(SpawnAreaMin.X, SpawnAreaMax.X),
-			Rand.FRandRange(SpawnAreaMin.Y, SpawnAreaMax.Y)
+	for (int i = 0; i < NumParticles; ++i) {
+		int x = i % cols;
+		int y = i / cols;
+
+		FVector2D pos(
+			SpawnAreaMin.X + x * spacing,
+			SpawnAreaMin.Y + y * spacing
 		);
 
 		Particles.Emplace(pos, mass2D);
-
-		if (i < 5) {
-			UE_LOG(LogTemp, Verbose, TEXT("Spawn particle %d pos=%s mass2D=%.6f"), i, *pos.ToString(), mass2D);
-		}
 	}
 
 	Densities.SetNumZeroed(Particles.Num());
@@ -118,12 +119,18 @@ void AFluidSimulator::UpdateParticles(float DeltaTime)
 
 void AFluidSimulator::ComputeDensityPressure()
 {
-	const float h = SmoothingRadius;
 	const int32 N = Particles.Num();
 
 	if (N == 0) {
 		return;
 	}
+
+	const float h = SmoothingRadius;
+	const float h2 = h * h;
+	const float h3 = h * h * h;
+	const float h6 = h3 * h3;
+	const float h9 = h6 * h3;
+	const float poly6Coeff = 315.0f / (64.0f * PI * h9);
 
 	Densities.SetNumUninitialized(N);
 	Pressures.SetNumUninitialized(N);
@@ -140,13 +147,16 @@ void AFluidSimulator::ComputeDensityPressure()
 		for (int32 j : Neighbors) {
 			const FVector2D pj = Particles[j].Position;
 			const FVector2D rij = pi - pj;
-			const float r = rij.Size(); // SizeSquared ?
+			const float r2 = rij.SizeSquared();
 
-			if (r <= h) {
-				const float m3D = Particles[j].Mass * ParticleThickness;
-				const float w = Use3DKernels ? Poly6Kernel3D(r, h) : Poly6Kernel3D(r, h);
-				rho += m3D * w;
+			if (r2 > h2) {
+				continue;
 			}
+
+			const float m3D = Particles[j].Mass * ParticleThickness;
+			const float x = (h2 - r2);
+			const float w = poly6Coeff * x * x * x;
+			rho += m3D * w;
 		}
 
 		// useless ?
@@ -157,12 +167,7 @@ void AFluidSimulator::ComputeDensityPressure()
 		Densities[i] = rho;
 		Particles[i].Density = rho;
 
-		// remove boolean
-		if (Use3DKernels) {
-			Pressures[i] = TaitK * (FMath::Pow(rho / RestDensity, TaitGamma) - 1.0f);
-		} else {
-			Pressures[i] = TaitK * (rho - RestDensity);
-		}
+		Pressures[i] = TaitK * (FMath::Pow(rho / RestDensity, TaitGamma) - 1.0f);
 
 		Particles[i].Pressure = Pressures[i];
 	}
@@ -170,12 +175,18 @@ void AFluidSimulator::ComputeDensityPressure()
 
 void AFluidSimulator::ComputeForces()
 {
-	const float h = SmoothingRadius;
 	const int32 N = Particles.Num();
 
 	if (N == 0) {
 		return;
 	}
+
+	const float h = SmoothingRadius;
+	const float h2 = h * h;
+	const float h3 = h * h * h;
+	const float h6 = h3 * h3;
+	const float spikyCoeff = -45.0f / (PI * h6);
+	const float viscLapCoeff = 45.0f / (PI * h6);
 
 	for (int32 i = 0; i < N; ++i) {
 		Particles[i].ResetForce();
@@ -204,12 +215,13 @@ void AFluidSimulator::ComputeForces()
 
 			const FVector2D pj = Particles[j].Position;
 			const FVector2D rij = pi - pj;
-			const float r = rij.Size(); // SizeSquared ?
+			const float r2 = rij.SizeSquared();
 
-			if (r <= 0.0f || r > h) {
+			if (r2 <= KINDA_SMALL_NUMBER || r2 > h2) {
 				continue;
 			}
 
+			const float r = FMath::Sqrt(r2);
 			const float m3D = Particles[j].Mass * ParticleThickness;
 			const float rhj = Densities[j];
 
@@ -217,15 +229,23 @@ void AFluidSimulator::ComputeForces()
 				continue;
 			}
 
+			const float invR = 1.0f / r;
+			const FVector2D rHat = rij * invR;
+			const float gradMag = spikyCoeff * (h - r) * (h - r);
+
 			const FVector2D gradW = SpikyGrad3D(rij, r, h);
+
 			fPressure += -m3D * ((piPressure / (rhoi * rhoi)) + (Pressures[j] / (rhj * rhj))) * gradW;
 
 			const FVector2D velDiff = Particles[j].Velocity - vi;
-			const float lap = ViscosityLaplacian3D(r, h);
-			fVisc += Viscosity * m3D * (velDiff / (0.5f * (rhoi + rhj))) * lap;
+			const float lap = viscLapCoeff * (h - r);
+			fVisc += Viscosity * m3D * (velDiff / rhj) * lap;
 		}
 
 		const float mass3D_i = Particles[i].Mass * ParticleThickness;
+		fPressure *= mass3D_i;
+		fVisc *= mass3D_i;
+
 		const FVector2D fGravity = Gravity * mass3D_i;
 
 		Particles[i].Force = fPressure + fVisc + fGravity;

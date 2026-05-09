@@ -27,24 +27,24 @@ public:
 	FVector2D SpawnAreaMax = FVector2D(500.0f, 500.0f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid")
-	FVector2D Gravity = FVector2D(0.0f, -980.0f);
+	FVector2D Gravity = FVector2D(-980.0f, 0.0f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid")
-	float DampeningFactor = 0.98f;
+	float DampeningFactor = 0.92f;
 
 	// SPH
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
-	float SmoothingRadius = 24.0f;
+	float SmoothingRadius = 35.0f;
 
 	// temp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
-	float ParticleThickness = 8.0f;
+	float ParticleThickness = 1.2f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
-	float RestDensity = 0.001f;
+	float RestDensity = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
-	float Viscosity = 0.1f;
+	float Viscosity = 0.2f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float TaitK = 2000.0f;
@@ -52,12 +52,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float TaitGamma = 7.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
-	bool Use3DKernels = true;
-
 	// temp ? spatial hash ?
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Simulation")
-	float SubstepDt = 0.008333f;
+	float SubstepDt = 0.004f;
 
 	// debug
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
