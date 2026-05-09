@@ -94,6 +94,9 @@ void AFluidSimulator::InitializeParticles()
 	Densities.SetNumZeroed(Particles.Num());
 	Pressures.SetNumZeroed(Particles.Num());
 
+	SpatialHash = FSpatialHash(SmoothingRadius);
+	SpatialHash.Rebuild(Particles);
+
 	UE_LOG(LogTemp, Log, TEXT("Initialized %d particles (mass2D ~ %.6f)"), Particles.Num(), mass2D);
 }
 
@@ -103,6 +106,9 @@ void AFluidSimulator::UpdateParticles(float DeltaTime)
 
 	while (remaining > KINDA_SMALL_NUMBER) {
 		const float dt = FMath::Min(SubstepDt, remaining);
+
+		SpatialHash.Rebuild(Particles);
+
 		ComputeDensityPressure();
 		ComputeForces();
 		Integrate(dt);
@@ -122,12 +128,16 @@ void AFluidSimulator::ComputeDensityPressure()
 	Densities.SetNumUninitialized(N);
 	Pressures.SetNumUninitialized(N);
 
+	TArray<int32> Neighbors;
+
 	// to refacto
 	for (int32 i = 0; i < N; ++i) {
 		float rho = 0.0f;
 		const FVector2D pi = Particles[i].Position;
 
-		for (int32 j = 0; j < N; ++j) {
+		SpatialHash.QueryNeighbors(pi, h, Neighbors);
+
+		for (int32 j : Neighbors) {
 			const FVector2D pj = Particles[j].Position;
 			const FVector2D rij = pi - pj;
 			const float r = rij.Size(); // SizeSquared ?
@@ -147,6 +157,7 @@ void AFluidSimulator::ComputeDensityPressure()
 		Densities[i] = rho;
 		Particles[i].Density = rho;
 
+		// remove boolean
 		if (Use3DKernels) {
 			Pressures[i] = TaitK * (FMath::Pow(rho / RestDensity, TaitGamma) - 1.0f);
 		} else {
@@ -170,6 +181,8 @@ void AFluidSimulator::ComputeForces()
 		Particles[i].ResetForce();
 	}
 
+	TArray<int32> Neighbors;
+
 	// to refacto
 	for (int32 i = 0; i < N; ++i) {
 		FVector2D fPressure = FVector2D::ZeroVector;
@@ -180,7 +193,11 @@ void AFluidSimulator::ComputeForces()
 		const float rhoi = Densities[i];
 		const float piPressure = Pressures[i];
 
-		for (int32 j = 0; j < N; ++j) {
+		// a way too avoid two queryneighbors etc ?
+
+		SpatialHash.QueryNeighbors(pi, h, Neighbors);
+
+		for (int32 j : Neighbors) {
 			if (i == j) {
 				continue;
 			}
@@ -201,12 +218,10 @@ void AFluidSimulator::ComputeForces()
 			}
 
 			const FVector2D gradW = SpikyGrad3D(rij, r, h);
-			//fPressure += -m3D * (piPressure + Pressures[j]) / (2.0f * rhj) * gradW; old working formula ?
 			fPressure += -m3D * ((piPressure / (rhoi * rhoi)) + (Pressures[j] / (rhj * rhj))) * gradW;
 
 			const FVector2D velDiff = Particles[j].Velocity - vi;
 			const float lap = ViscosityLaplacian3D(r, h);
-			//fVisc += Viscosity * m3D * (velDiff / rhj) * lap; old working formula ?
 			fVisc += Viscosity * m3D * (velDiff / (0.5f * (rhoi + rhj))) * lap;
 		}
 

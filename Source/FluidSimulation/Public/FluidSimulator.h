@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "FluidParticle.h"
+#include "SpatialHash.h"
 #include "FluidSimulator.generated.h"
 
 UCLASS()
@@ -84,4 +85,6 @@ private:
 
 	TArray<float> Densities;
 	TArray<float> Pressures;
+
+	FSpatialHash SpatialHash;
 };
