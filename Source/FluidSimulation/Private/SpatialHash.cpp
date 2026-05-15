@@ -11,12 +11,10 @@ int64 FSpatialHash::GetChunkHash(const FVector2D& Position) const
 	const int32 ChunkX = FMath::FloorToInt(Position.X / GridChunkSize);
 	const int32 ChunkY = FMath::FloorToInt(Position.Y / GridChunkSize);
 
-	// 32bits into one 64bit
-	const uint64_t x = static_cast<uint32_t>(ChunkX);
-	const uint64_t y = static_cast<uint32_t>(ChunkY);
-	const uint64_t hash = (x << 32) | y;
+	const int64 Sum = static_cast<int64>(ChunkX) + static_cast<int64>(ChunkY);
+	const int64 CantorHash = (Sum * (Sum + 1)) / 2 + ChunkY;
 
-	return static_cast<int64>(hash);
+	return CantorHash;
 }
 
 void FSpatialHash::Rebuild(const TArray<FluidParticle>& Particles)
@@ -43,12 +41,10 @@ void FSpatialHash::GetChunksInRadius(const FVector2D& Position, float Radius, TA
 
 	for (int32 ChunkX = MinChunkX; ChunkX <= MaxChunkX; ++ChunkX) {
 		for (int32 ChunkY = MinChunkY; ChunkY <= MaxChunkY; ++ChunkY) {
-			// 32bits into one 64bit
-			const uint64_t x = static_cast<uint32_t>(ChunkX);
-			const uint64_t y = static_cast<uint32_t>(ChunkY);
-			const uint64_t hash = (x << 32) | y;
+			const int64 Sum = static_cast<int64>(ChunkX) + static_cast<int64>(ChunkY);
+			const int64 CantorHash = (Sum * (Sum + 1)) / 2 + ChunkY;
 
-			OutChunks.Add(hash);
+			OutChunks.Add(CantorHash);
 		}
 	}
 }

@@ -2,6 +2,7 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
+#include "Async/ParallelFor.h"
 
 static FORCEINLINE float Poly6Kernel3D(float r, float h)
 {
@@ -135,10 +136,17 @@ void AFluidSimulator::ComputeDensityPressure()
 	Densities.SetNumUninitialized(N);
 	Pressures.SetNumUninitialized(N);
 
-	TArray<int32> Neighbors;
-
 	// to refacto
-	for (int32 i = 0; i < N; ++i) {
+	ParallelFor(N, [this, h, h2, poly6Coeff](int32 i) {
+		// avoid allocations per iteration
+		static thread_local TArray<int32> Neighbors;
+
+		if (Neighbors.GetData() == nullptr) {
+			Neighbors.Reserve(32);
+		} else {
+			Neighbors.Reset();
+		}
+
 		float rho = 0.0f;
 		const FVector2D pi = Particles[i].Position;
 
@@ -170,7 +178,7 @@ void AFluidSimulator::ComputeDensityPressure()
 		Pressures[i] = TaitK * (FMath::Pow(rho / RestDensity, TaitGamma) - 1.0f);
 
 		Particles[i].Pressure = Pressures[i];
-	}
+	});
 }
 
 void AFluidSimulator::ComputeForces()
@@ -188,14 +196,22 @@ void AFluidSimulator::ComputeForces()
 	const float spikyCoeff = -45.0f / (PI * h6);
 	const float viscLapCoeff = 45.0f / (PI * h6);
 
-	for (int32 i = 0; i < N; ++i) {
+	ParallelFor(N, [this](int32 i) {
 		Particles[i].ResetForce();
-	}
+	});
 
-	TArray<int32> Neighbors;
 
 	// to refacto
-	for (int32 i = 0; i < N; ++i) {
+	ParallelFor(N, [this, h, h2, spikyCoeff, viscLapCoeff](int32 i) {
+		// avoid allocations per iteration
+		static thread_local TArray<int32> Neighbors;
+
+		if (Neighbors.GetData() == nullptr) {
+			Neighbors.Reserve(32);
+		} else {
+			Neighbors.Reset();
+		}
+
 		FVector2D fPressure = FVector2D::ZeroVector;
 		FVector2D fVisc = FVector2D::ZeroVector;
 
@@ -299,7 +315,7 @@ void AFluidSimulator::ComputeForces()
 		}
 
 		Particles[i].Force = fPressure + fVisc + fGravity + fBoundaryForce;
-	}
+	});
 }
 
 void AFluidSimulator::Integrate(float Dt)
@@ -310,7 +326,7 @@ void AFluidSimulator::Integrate(float Dt)
 		return;
 	}
 
-	for (int32 i = 0; i < N; ++i) {
+	ParallelFor(N, [this, Dt](int32 i) {
 		const float mass3D = Particles[i].Mass * ParticleThickness;
 		const FVector2D accel = Particles[i].Force / mass3D;
 
@@ -321,17 +337,19 @@ void AFluidSimulator::Integrate(float Dt)
 		if (!UseBoundaryForces && bClampToGround) {
 			if (Particles[i].Position.X < SpawnAreaMin.X) {
 				Particles[i].Position.X = SpawnAreaMin.X; Particles[i].Velocity.X *= -0.25f;
-			} else if (Particles[i].Position.X > SpawnAreaMax.X) {
+			}
+			else if (Particles[i].Position.X > SpawnAreaMax.X) {
 				Particles[i].Position.X = SpawnAreaMax.X; Particles[i].Velocity.X *= -0.25f;
 			}
 
 			if (Particles[i].Position.Y < SpawnAreaMin.Y) {
 				Particles[i].Position.Y = SpawnAreaMin.Y; Particles[i].Velocity.Y *= -0.25f;
-			}else if (Particles[i].Position.Y > SpawnAreaMax.Y) {
+			}
+			else if (Particles[i].Position.Y > SpawnAreaMax.Y) {
 				Particles[i].Position.Y = SpawnAreaMax.Y; Particles[i].Velocity.Y *= -0.25f;
 			}
 		}
-	}
+	});
 }
 
 // debug / temp ?
