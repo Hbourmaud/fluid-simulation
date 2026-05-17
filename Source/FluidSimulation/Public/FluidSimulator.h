@@ -6,6 +6,27 @@
 #include "SpatialHash.h"
 #include "FluidSimulator.generated.h"
 
+USTRUCT(BlueprintType)
+struct FFluidTypeProperties
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FluidType")
+	FName Name = "Fluid";
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FluidType")
+	float RestDensity = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FluidType")
+	float Viscosity = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FluidType")
+	float TaitK = 2000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FluidType")
+	FColor DebugColor = FColor::Cyan;
+};
+
 UCLASS()
 class FLUIDSIMULATION_API AFluidSimulator : public AActor
 {
@@ -32,13 +53,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid")
 	float DampeningFactor = 0.98f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fluid")
+	float SecondFluidFraction = 0.35f;
+
 	// SPH
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float SmoothingRadius = 35.0f;
 
-	// temp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float ParticleThickness = 1.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
+	TArray<FFluidTypeProperties> FluidTypes;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float RestDensity = 1.0f;
@@ -52,11 +78,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float TaitGamma = 7.0f;
 
-	// temp ? spatial hash ?
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Simulation")
 	float SubstepDt = 0.004f;
 
-	// debug
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
 	bool IsVisualize = true;
 

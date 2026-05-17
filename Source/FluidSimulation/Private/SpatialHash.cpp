@@ -37,7 +37,7 @@ void FSpatialHash::GetChunksInRadius(const FVector2D& Position, float Radius, TA
 	const int32 MinChunkY = FMath::FloorToInt((Position.Y - Radius) / GridChunkSize);
 	const int32 MaxChunkY = FMath::FloorToInt((Position.Y + Radius) / GridChunkSize);
 
-	// to refacto (two loops + reused 32-64 bits trick)
+	// to refacto (two loops + reused cantor trick)
 
 	for (int32 ChunkX = MinChunkX; ChunkX <= MaxChunkX; ++ChunkX) {
 		for (int32 ChunkY = MinChunkY; ChunkY <= MaxChunkY; ++ChunkY) {

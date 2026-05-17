@@ -71,26 +71,66 @@ void AFluidSimulator::InitializeParticles()
 	Particles.Empty();
 	Particles.Reserve(NumParticles);
 
-	FRandomStream RandomStream(12345);
+	const float width = SpawnAreaMax.X - SpawnAreaMin.X;
+	const float height = SpawnAreaMax.Y - SpawnAreaMin.Y;
 
-	const float area = FMath::Abs((SpawnAreaMax.X - SpawnAreaMin.X) * (SpawnAreaMax.Y - SpawnAreaMin.Y));
+	const float area = FMath::Abs(width * height);
+
 	const float particleArea = (NumParticles > 0) ? (area / float(NumParticles)) : 1.0f;
-	const float mass2D = RestDensity * particleArea;
 
-	// temp grid spawn
-	const float spacing = 20.0f;
-	int cols = 45;
+	const float baseSpacing = FMath::Sqrt(FMath::Max(1e-6f, particleArea));
 
-	for (int i = 0; i < NumParticles; ++i) {
-		int x = i % cols;
-		int y = i / cols;
+	const float xSpacing = baseSpacing * 0.9f;
+	const float ySpacing = xSpacing * 0.8f;
 
-		FVector2D pos(
-			SpawnAreaMin.X + x * spacing,
-			SpawnAreaMin.Y + y * spacing
-		);
+	const int32 cols = FMath::Max(1,FMath::FloorToInt(width / xSpacing));
 
-		Particles.Emplace(pos, mass2D);
+	const int32 rows = FMath::Max(1, FMath::FloorToInt(height / ySpacing));
+
+	const int32 splitRow = FMath::FloorToInt(rows * (1.0f - SecondFluidFraction));
+
+	const float totalWidth = cols * xSpacing;
+	const float totalHeight = rows * ySpacing;
+
+	const float offsetX = (width - totalWidth) * 0.5f;
+	const float offsetY = (height - totalHeight) * 0.5f;
+
+	FRandomStream Rand(12345);
+
+	int32 placed = 0;
+
+	int32 typeACount = 0;
+	int32 typeBCount = 0;
+
+	for (int32 row = 0; row < rows && placed < NumParticles; ++row)	{
+		const float rowOffset = (row % 2 == 0) ? 0.0f : xSpacing * 0.5f;
+
+		for (int32 col = 0; col < cols && placed < NumParticles; ++col)	{
+			float posX = SpawnAreaMin.X + offsetX + rowOffset + (col + 0.5f) * xSpacing;
+
+			float posY = SpawnAreaMin.Y + offsetY + (row + 0.5f) * ySpacing;
+
+			posX += Rand.FRandRange(-0.05f * xSpacing, 0.05f * xSpacing);
+			posY += Rand.FRandRange(-0.05f * ySpacing, 0.05f * ySpacing);
+
+			const FVector2D pos(posX, posY);
+
+			const int32 typeIdx = (FluidTypes.Num() > 1 && row >= splitRow) ? 1 : 0;
+
+			if (typeIdx == 0) {
+				typeACount++;
+			} else {
+				typeBCount++;
+			}
+
+			const float restDensity = FluidTypes.IsValidIndex(typeIdx) ? FluidTypes[typeIdx].RestDensity : RestDensity;
+
+			const float mass2D = restDensity * particleArea;
+
+			Particles.Emplace(pos, mass2D, typeIdx);
+
+			placed++;
+		}
 	}
 
 	Densities.SetNumZeroed(Particles.Num());
@@ -98,8 +138,6 @@ void AFluidSimulator::InitializeParticles()
 
 	SpatialHash = FSpatialHash(SmoothingRadius);
 	SpatialHash.Rebuild(Particles);
-
-	UE_LOG(LogTemp, Log, TEXT("Initialized %d particles (mass2D ~ %.6f)"), Particles.Num(), mass2D);
 }
 
 void AFluidSimulator::UpdateParticles(float DeltaTime)
@@ -167,7 +205,6 @@ void AFluidSimulator::ComputeDensityPressure()
 			rho += m3D * w;
 		}
 
-		// useless ?
 		if (rho <= KINDA_SMALL_NUMBER) {
 			rho = KINDA_SMALL_NUMBER;
 		}
@@ -175,8 +212,11 @@ void AFluidSimulator::ComputeDensityPressure()
 		Densities[i] = rho;
 		Particles[i].Density = rho;
 
-		Pressures[i] = TaitK * (FMath::Pow(rho / RestDensity, TaitGamma) - 1.0f);
+		const int32 tIdx = Particles[i].TypeIndex;
+		const float restRho = FluidTypes.IsValidIndex(tIdx) ? FluidTypes[tIdx].RestDensity : RestDensity;
+		const float k = FluidTypes.IsValidIndex(tIdx) ? FluidTypes[tIdx].TaitK : TaitK;
 
+		Pressures[i] = k * (FMath::Pow(rho / restRho, TaitGamma) - 1.0f);
 		Particles[i].Pressure = Pressures[i];
 	});
 }
@@ -201,7 +241,6 @@ void AFluidSimulator::ComputeForces()
 	});
 
 
-	// to refacto
 	ParallelFor(N, [this, h, h2, spikyCoeff, viscLapCoeff](int32 i) {
 		// avoid allocations per iteration
 		static thread_local TArray<int32> Neighbors;
@@ -219,8 +258,10 @@ void AFluidSimulator::ComputeForces()
 		const FVector2D vi = Particles[i].Velocity;
 		const float rhoi = Densities[i];
 		const float piPressure = Pressures[i];
+		const int32 typeI = Particles[i].TypeIndex;
+		const float mui = FluidTypes.IsValidIndex(typeI) ? FluidTypes[typeI].Viscosity : Viscosity;
 
-		// a way too avoid two queryneighbors etc ?
+		// a way too avoid two queryneighbors call etc ?
 
 		SpatialHash.QueryNeighbors(pi, h, Neighbors);
 
@@ -246,16 +287,32 @@ void AFluidSimulator::ComputeForces()
 			}
 
 			const float invR = 1.0f / r;
-			const FVector2D rHat = rij * invR;
 			const float gradMag = spikyCoeff * (h - r) * (h - r);
 
 			const FVector2D gradW = SpikyGrad3D(rij, r, h);
 
-			fPressure += -m3D * ((piPressure / (rhoi * rhoi)) + (Pressures[j] / (rhj * rhj))) * gradW;
+			fPressure += -m3D * ((piPressure / (rhoi * rhoi)) + (Pressures[j] / (rhj * rhj))) *	gradW;
+
+			const int32 typeJ = Particles[j].TypeIndex;
+
+			const float muj = FluidTypes.IsValidIndex(typeJ) ? FluidTypes[typeJ].Viscosity : Viscosity;
+
+			const float muPair = 0.5f * (mui + muj);
 
 			const FVector2D velDiff = Particles[j].Velocity - vi;
+
 			const float lap = viscLapCoeff * (h - r);
-			fVisc += Viscosity * m3D * (velDiff / rhj) * lap;
+
+			fVisc += muPair * m3D * (velDiff / rhj) * lap;
+
+			if (typeI != typeJ)	{
+				const FVector2D rHat = rij / r;
+
+				const float repelStrength = 700.0f;
+				const float repel = repelStrength * (1.0f - r / h);
+
+				fPressure += rHat * repel;
+			}
 		}
 
 		const float mass3D_i = Particles[i].Mass * ParticleThickness;
@@ -263,6 +320,8 @@ void AFluidSimulator::ComputeForces()
 		fVisc *= mass3D_i;
 
 		const FVector2D fGravity = Gravity * mass3D_i;
+
+		// Boundary handling
 
 		FVector2D fBoundaryForce = FVector2D::ZeroVector;
 
@@ -352,13 +411,16 @@ void AFluidSimulator::Integrate(float Dt)
 	});
 }
 
-// debug / temp ?
 void AFluidSimulator::VisualizeParticles() const
 {
-	DrawDebugBox(GetWorld(), GetActorLocation(), FVector(16.0f), FColor::White, false, -1.0f, 0, 1.0f);
-
 	for (const FluidParticle& P : Particles) {
 		const FVector worldPos(P.Position.X, P.Position.Y, PlaneZ);
-		DrawDebugSphere(GetWorld(), worldPos, DebugSphereRadius, 8, FColor::Cyan, false, -1.0f, 0, 1.0f);
+		FColor color = FColor::Cyan;
+
+		if (FluidTypes.IsValidIndex(P.TypeIndex)) {
+			color = FluidTypes[P.TypeIndex].DebugColor;
+		}
+
+		DrawDebugSphere(GetWorld(), worldPos, DebugSphereRadius, 8, color, false, -1.0f, 0, 1.0f);
 	}
 }
