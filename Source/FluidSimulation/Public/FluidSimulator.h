@@ -66,15 +66,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	TArray<FFluidTypeProperties> FluidTypes;
 
+	// deprecate, use FluidTypes instead
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float RestDensity = 1.0f;
 
+	// deprecate, use FluidTypes instead
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float Viscosity = 0.2f;
 
+	// deprecate, use FluidTypes instead
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float TaitK = 2000.0f;
 
+	// deprecate, use FluidTypes instead
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SPH")
 	float TaitGamma = 7.0f;
 
